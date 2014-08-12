@@ -365,6 +365,7 @@ MultirotorMixer::mix(float *outputs, unsigned space)
 		}
 		outputs[i] = constrain(_idle_speed + (outputs[i] * (1.0f - _idle_speed) * scale_out), _idle_speed, 1.0f);
 	}
+
 #if !defined(CONFIG_ARCH_BOARD_PX4IO_V1) && !defined(CONFIG_ARCH_BOARD_PX4IO_V2)
         /* publish/advertise motor limts */
         if (_limits_pub > 0) {
