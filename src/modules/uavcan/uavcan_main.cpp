@@ -327,7 +327,9 @@ int UavcanNode::run()
 
 				// Do mixing
 				outputs.noutputs = _mixers->mix(&outputs.output[0], num_outputs_max);
-				outputs.timestamp = hrt_absolute_time();
+				outputs.timestamp = _controls[0].timestamp;
+				//printf("%llu->%llu\n",  _controls[0].timestamp, hrt_absolute_time()); // delay check
+
 
 				// iterate actuators
 				for (unsigned i = 0; i < outputs.noutputs; i++) {
@@ -570,7 +572,7 @@ extern "C" __EXPORT int uavcan_main(int argc, char *argv[]);
 
 int uavcan_main(int argc, char *argv[])
 {
-	constexpr unsigned DEFAULT_CAN_BITRATE = 1000000;
+	constexpr unsigned DEFAULT_CAN_BITRATE = 10000000;
 
 	if (argc < 2) {
 		print_usage();

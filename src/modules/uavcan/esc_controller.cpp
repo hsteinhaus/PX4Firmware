@@ -40,6 +40,9 @@
 #include "esc_controller.hpp"
 #include <systemlib/err.h>
 
+#include <drivers/drv_hrt.h>
+
+
 
 #define MOTOR_BIT(x) (1<<(x))
 
@@ -47,7 +50,9 @@ UavcanEscController::UavcanEscController(uavcan::INode &node) :
 	_node(node),
 	_uavcan_pub_raw_cmd(node),
 	_uavcan_sub_status(node),
-	_orb_timer(node)
+	_orb_timer(node),
+	_uavcan_pub_ping_cmd(node),
+	_uavcan_sub_ping(node)
 {
 }
 
@@ -71,11 +76,14 @@ int UavcanEscController::init()
 	_orb_timer.setCallback(TimerCbBinder(this, &UavcanEscController::orb_pub_timer_cb));
 	_orb_timer.startPeriodic(uavcan::MonotonicDuration::fromMSec(1000 / ESC_STATUS_UPDATE_RATE_HZ));
 
+	_uavcan_sub_ping.start(PingCbBinder(this, &UavcanEscController::esc_ping_sub_cb));
 	return res;
 }
 
 void UavcanEscController::update_outputs(float *outputs, unsigned num_outputs)
 {
+	static int ping_counter = 0;
+
 	if ((outputs == nullptr) || (num_outputs > MAX_ESCS)) {
 		perf_count(_perfcnt_invalid_input);
 		return;
@@ -126,6 +134,20 @@ void UavcanEscController::update_outputs(float *outputs, unsigned num_outputs)
 	 * Note that for a quadrotor it takes one CAN frame
 	 */
 	(void)_uavcan_pub_raw_cmd.broadcast(msg);
+
+	if (!(ping_counter++ % 100)) ping();
+}
+
+static uint64_t ts_out, ts_in =0;
+
+void UavcanEscController::ping()
+{
+	uavcan::equipment::esc::PingCommand msg;
+	msg.index = 0;
+	msg.timestamp = hrt_absolute_time();
+
+	(void)_uavcan_pub_ping_cmd.broadcast(msg);
+	if (ts_in != 0) printf("ping roundtrip: %.3lf ms\n",  ((double)ts_in - ts_out)/1000.);
 }
 
 void UavcanEscController::arm_all_escs(bool arm)
@@ -144,6 +166,12 @@ void UavcanEscController::arm_single_esc(int num, bool arm)
 		_armed_mask = 0;
 }
 
+void UavcanEscController::esc_ping_sub_cb(const uavcan::ReceivedDataStructure<uavcan::equipment::esc::PingResponse> &msg)
+{
+	ts_in = hrt_absolute_time();
+	ts_out = msg.timestamp;
+}
+
 void UavcanEscController::esc_status_sub_cb(const uavcan::ReceivedDataStructure<uavcan::equipment::esc::Status> &msg)
 {
 	// TODO save status into a local storage; publish to ORB later from orb_pub_timer_cb()
@@ -153,3 +181,5 @@ void UavcanEscController::orb_pub_timer_cb(const uavcan::TimerEvent&)
 {
 	// TODO publish to ORB
 }
+
+

@@ -47,6 +47,8 @@
 #include <uavcan/uavcan.hpp>
 #include <uavcan/equipment/esc/RawCommand.hpp>
 #include <uavcan/equipment/esc/Status.hpp>
+#include <uavcan/equipment/esc/PingCommand.hpp>
+#include <uavcan/equipment/esc/PingResponse.hpp>
 #include <systemlib/perf_counter.h>
 
 class UavcanEscController
@@ -64,6 +66,11 @@ public:
 
 private:
 	/**
+	 * ESC ping response message reception will be reported via this callback.
+	 */
+	void esc_ping_sub_cb(const uavcan::ReceivedDataStructure<uavcan::equipment::esc::PingResponse> &msg);
+
+	/**
 	 * ESC status message reception will be reported via this callback.
 	 */
 	void esc_status_sub_cb(const uavcan::ReceivedDataStructure<uavcan::equipment::esc::Status> &msg);
@@ -73,10 +80,15 @@ private:
 	 */
 	void orb_pub_timer_cb(const uavcan::TimerEvent &event);
 
+	void ping();
 
 	static constexpr unsigned MAX_RATE_HZ = 100;			///< XXX make this configurable
 	static constexpr unsigned ESC_STATUS_UPDATE_RATE_HZ = 5;
 	static constexpr unsigned MAX_ESCS = uavcan::equipment::esc::RawCommand::FieldTypes::cmd::MaxSize;
+
+	typedef uavcan::MethodBinder<UavcanEscController*,
+		void (UavcanEscController::*)(const uavcan::ReceivedDataStructure<uavcan::equipment::esc::PingResponse>&)>
+		PingCbBinder;
 
 	typedef uavcan::MethodBinder<UavcanEscController*,
 		void (UavcanEscController::*)(const uavcan::ReceivedDataStructure<uavcan::equipment::esc::Status>&)>
@@ -93,6 +105,9 @@ private:
 	uavcan::Publisher<uavcan::equipment::esc::RawCommand>			_uavcan_pub_raw_cmd;
 	uavcan::Subscriber<uavcan::equipment::esc::Status, StatusCbBinder>	_uavcan_sub_status;
 	uavcan::TimerEventForwarder<TimerCbBinder>				_orb_timer;
+
+	uavcan::Publisher<uavcan::equipment::esc::PingCommand>			_uavcan_pub_ping_cmd;
+	uavcan::Subscriber<uavcan::equipment::esc::PingResponse, PingCbBinder>	_uavcan_sub_ping;
 
 	/*
 	 * ESC states
