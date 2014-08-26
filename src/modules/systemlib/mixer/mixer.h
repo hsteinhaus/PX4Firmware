@@ -130,6 +130,9 @@
 
 #include <nuttx/config.h>
 #include "drivers/drv_mixer.h"
+
+#include <uORB/topics/multirotor_motor_limits.h>
+
 #include "mixer_load.h"
 
 /**
@@ -530,6 +533,21 @@ private:
 	float				_pitch_scale;
 	float				_yaw_scale;
 	float				_idle_speed;
+
+#if !defined(CONFIG_ARCH_BOARD_PX4IO_V1) && !defined(CONFIG_ARCH_BOARD_PX4IO_V2)
+	orb_advert_t			_limits_pub;
+	multirotor_motor_limits_s 	_limits;
+#else
+	struct  {
+	uint8_t roll_pitch	: 1; // roll/pitch limit reached
+        uint8_t yaw		: 1; // yaw limit reached
+        uint8_t throttle_lower	: 1; // lower throttle limit reached
+        uint8_t throttle_upper	: 1; // upper throttle limit reached
+	uint8_t reserved	: 4;
+} _limits;
+
+#endif
+	
 
 	unsigned			_rotor_count;
 	const Rotor			*_rotors;
