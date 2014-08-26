@@ -1,6 +1,6 @@
 ############################################################################
 #
-#   Copyright (c) 2013 PX4 Development Team. All rights reserved.
+#   Copyright (c) 2012-2014 PX4 Development Team. All rights reserved.
 #
 # Redistribution and use in source and binary forms, with or without
 # modification, are permitted provided that the following conditions
@@ -32,9 +32,11 @@
 ############################################################################
 
 #
-# Makefile to build the unit test library.
-#
+# Driver for the PCA9685 I2C PWM controller
+# The chip is used on the adafruit I2C PWM converter,
+# which allows to control servos via I2C.
+# https://www.adafruit.com/product/815
 
-SRCS		 = unit_test.cpp
+MODULE_COMMAND	= pca9685
 
-MAXOPTIMIZATION	 = -Os
+SRCS		= pca9685.cpp

@@ -1,6 +1,6 @@
 /****************************************************************************
  *
- *   Copyright (C) 2012-2013 PX4 Development Team. All rights reserved.
+ *   Copyright (c) 2014 PX4 Development Team. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -32,16 +32,16 @@
  ****************************************************************************/
 
 /**
- * @file differential_pressure.h
- *
- * Definition of differential pressure topic
+ * @file vision_position_estimate.h
+ * Vision based position estimate
  */
 
-#ifndef TOPIC_DIFFERENTIAL_PRESSURE_H_
-#define TOPIC_DIFFERENTIAL_PRESSURE_H_
+#ifndef TOPIC_VISION_POSITION_ESTIMATE_H_
+#define TOPIC_VISION_POSITION_ESTIMATE_H_
 
-#include "../uORB.h"
 #include <stdint.h>
+#include <stdbool.h>
+#include "../uORB.h"
 
 /**
  * @addtogroup topics
@@ -49,15 +49,26 @@
  */
 
 /**
- * Differential pressure.
+ * Vision based position estimate in NED frame
  */
-struct differential_pressure_s {
-	uint64_t	timestamp;			/**< Microseconds since system boot, needed to integrate */
-	uint64_t	error_count;			/**< Number of errors detected by driver */
-	float	differential_pressure_raw_pa;		/**< Raw differential pressure reading (may be negative) */
-	float	differential_pressure_filtered_pa;	/**< Low pass filtered differential pressure reading */
-	float	max_differential_pressure_pa;		/**< Maximum differential pressure reading */
-	float	temperature;				/**< Temperature provided by sensor, -1000.0f if unknown */
+struct vision_position_estimate {
+
+	unsigned id;				/**< ID of the estimator, commonly the component ID of the incoming message */
+
+	uint64_t timestamp_boot;		/**< time of this estimate, in microseconds since system start */
+	uint64_t timestamp_computer;		/**< timestamp provided by the companion computer, in us */
+
+	float x;				/**< X position in meters in NED earth-fixed frame */
+	float y;				/**< Y position in meters in NED earth-fixed frame */
+	float z;				/**< Z position in meters in NED earth-fixed frame (negative altitude) */
+
+	float vx;				/**< X velocity in meters per second in NED earth-fixed frame */
+	float vy;				/**< Y velocity in meters per second in NED earth-fixed frame */
+	float vz;				/**< Z velocity in meters per second in NED earth-fixed frame */
+
+	float q[4];				/**< Estimated attitude as quaternion */
+
+	// XXX Add covariances here
 
 };
 
@@ -66,6 +77,6 @@ struct differential_pressure_s {
  */
 
 /* register this as object request broker structure */
-ORB_DECLARE(differential_pressure);
+ORB_DECLARE(vision_position_estimate);
 
-#endif
+#endif /* TOPIC_VISION_POSITION_ESTIMATE_H_ */
