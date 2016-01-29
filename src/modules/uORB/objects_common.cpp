@@ -266,3 +266,9 @@ ORB_DEFINE(distance_sensor, struct distance_sensor_s);
 
 #include "topics/camera_trigger.h"
 ORB_DEFINE(camera_trigger, struct camera_trigger_s);
+
+#include "topics/uavcan_parameter_request.h"
+ORB_DEFINE(uavcan_parameter_request, struct uavcan_parameter_request_s);
+
+#include "topics/uavcan_parameter_value.h"
+ORB_DEFINE(uavcan_parameter_value, struct uavcan_parameter_value_s);
