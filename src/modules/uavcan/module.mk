@@ -42,7 +42,7 @@ MAXOPTIMIZATION = -O3
 
 # Main
 SRCS += uavcan_main.cpp              \
-        uavcan_clock.cpp             \
+        uavcan_servers.cpp           \
         uavcan_params.c
 
 # Actuators
@@ -65,15 +65,20 @@ INCLUDE_DIRS += $(LIBUAVCAN_INC)
 # because this platform lacks most of the standard library and STL. Hence we need to force C++03 mode.
 override EXTRADEFINES := $(EXTRADEFINES) -DUAVCAN_CPP_VERSION=UAVCAN_CPP03 -DUAVCAN_NO_ASSERTIONS
 
-
 #
 # libuavcan drivers for STM32
 #
 include $(UAVCAN_DIR)/libuavcan_drivers/stm32/driver/include.mk
 # Use the relitive path to keep the genrated files in the BUILD_DIR
 SRCS += $(subst  $(PX4_MODULE_SRC),../../,$(LIBUAVCAN_STM32_SRC))
-INCLUDE_DIRS += $(LIBUAVCAN_STM32_INC)
-override EXTRADEFINES := $(EXTRADEFINES) -DUAVCAN_STM32_NUTTX -DUAVCAN_STM32_NUM_IFACES=2
+INCLUDE_DIRS += $(LIBUAVCAN_STM32_INC)  $(UAVCAN_DIR)/libuavcan/include  $(UAVCAN_DIR)/libuavcan/include/dsdlc_generated  
+INCLUDE_DIRS += $(UAVCAN_DIR)/libuavcan_drivers/posix/include  $(UAVCAN_DIR)/libuavcan_drivers/stm32/driver/include
+INCLUDE_DIRS += $(MAVLINK_DIR)/include
+
+override EXTRADEFINES := $(EXTRADEFINES) -DUAVCAN_STM32_NUTTX -DUAVCAN_STM32_NUM_IFACES=2 \
+                -DUAVCAN_CPP_VERSION=UAVCAN_CPP03 -DUAVCAN_MEM_POOL_BLOCK_SIZE=48 \
+                -DUAVCAN_NO_ASSERTIONS -DUAVCAN_PLATFORM=stm32 \
+                -DUAVCAN_STM32_${OS_UPPER}=1 -DUAVCAN_STM32_TIMER_NUMBER=5
 
 #
 # Invoke DSDL compiler

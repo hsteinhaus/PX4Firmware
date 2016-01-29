@@ -1,6 +1,6 @@
 /****************************************************************************
  *
- *   Copyright (c) 2014 PX4 Development Team. All rights reserved.
+ *   Copyright (C) 2015 PX4 Development Team. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -31,51 +31,43 @@
  *
  ****************************************************************************/
 
-#include <uavcan_stm32/uavcan_stm32.hpp>
-#include <drivers/drv_hrt.h>
-
 /**
- * @file uavcan_clock.cpp
- *
- * Implements a clock for the CAN node.
- *
  * @author Pavel Kirienko <pavel.kirienko@gmail.com>
  */
 
-namespace uavcan_stm32
-{
-namespace clock
+#pragma once
+
+#include <systemlib/err.h>
+#include <uavcan/uavcan.hpp>
+#include <uavcan/helpers/heap_based_pool_allocator.hpp>
+
+// TODO: Entire UAVCAN application should be moved into a namespace later; this is the first step.
+namespace uavcan_node
 {
 
-uavcan::MonotonicTime getMonotonic()
+struct AllocatorSynchronizer
 {
-	return uavcan::MonotonicTime::fromUSec(hrt_absolute_time());
+	const ::irqstate_t state = ::irqsave();
+	~AllocatorSynchronizer() { ::irqrestore(state); }
+};
+
+struct Allocator : public uavcan::HeapBasedPoolAllocator<uavcan::MemPoolBlockSize, AllocatorSynchronizer>
+{
+	static constexpr unsigned CapacitySoftLimit = 250;
+	static constexpr unsigned CapacityHardLimit = 500;
+
+	Allocator() :
+		uavcan::HeapBasedPoolAllocator<uavcan::MemPoolBlockSize, AllocatorSynchronizer>(CapacitySoftLimit, CapacityHardLimit)
+	{ }
+
+	~Allocator()
+	{
+	        if (getNumAllocatedBlocks() > 0)
+	        {
+			warnx("UAVCAN LEAKS MEMORY: %u BLOCKS (%u BYTES) LOST",
+				getNumAllocatedBlocks(), getNumAllocatedBlocks() * uavcan::MemPoolBlockSize);
+	        }
+	}
+};
+
 }
-
-uavcan::UtcTime getUtc()
-{
-	return uavcan::UtcTime();
-}
-
-void adjustUtc(uavcan::UtcDuration adjustment)
-{
-	(void)adjustment;
-}
-
-uavcan::uint64_t getUtcUSecFromCanInterrupt();
-
-uavcan::uint64_t getUtcUSecFromCanInterrupt()
-{
-	return 0;
-}
-
-} // namespace clock
-
-SystemClock &SystemClock::instance()
-{
-	static SystemClock inst;
-	return inst;
-}
-
-}
-

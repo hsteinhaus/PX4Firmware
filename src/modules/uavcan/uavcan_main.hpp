@@ -34,7 +34,15 @@
 #pragma once
 
 #include <px4_config.h>
+
 #include <uavcan_stm32/uavcan_stm32.hpp>
+#include <uavcan/helpers/heap_based_pool_allocator.hpp>
+#include <uavcan/protocol/global_time_sync_master.hpp>
+#include <uavcan/protocol/global_time_sync_slave.hpp>
+#include <uavcan/protocol/param/GetSet.hpp>
+#include <uavcan/protocol/param/ExecuteOpcode.hpp>
+#include <uavcan/protocol/RestartNode.hpp>
+
 #include <drivers/device/device.h>
 #include <systemlib/perf_counter.h>
 
@@ -47,6 +55,9 @@
 #include "actuators/esc.hpp"
 #include "sensors/sensor_bridge.hpp"
 
+#include "uavcan_servers.hpp"
+#include "allocator.hpp"
+
 /**
  * @file uavcan_main.hpp
  *
@@ -56,23 +67,39 @@
  */
 
 #define NUM_ACTUATOR_CONTROL_GROUPS_UAVCAN	4
-#define UAVCAN_DEVICE_PATH	"/dev/uavcan/esc"
 
 // we add two to allow for actuator_direct and busevent
 #define UAVCAN_NUM_POLL_FDS (NUM_ACTUATOR_CONTROL_GROUPS_UAVCAN+2)
-
 /**
  * A UAVCAN node.
  */
 class UavcanNode : public device::CDev
 {
-	static constexpr unsigned MemPoolSize        = 10752; ///< Refer to the libuavcan manual to learn why
-	static constexpr unsigned RxQueueLenPerIface = 64;
-	static constexpr unsigned StackSize          = 3000;
+	static constexpr unsigned MaxBitRatePerSec   = 1000000;
+	static constexpr unsigned bitPerFrame        = 148;
+	static constexpr unsigned FramePerSecond     = MaxBitRatePerSec / bitPerFrame;
+	static constexpr unsigned FramePerMSecond    = ((FramePerSecond / 1000) + 1);
+
+	static constexpr unsigned PollTimeoutMs      = 3;
+
+	/*
+	 * This memory is reserved for uavcan to use for queuing CAN frames.
+	 * At 1Mbit there is approximately one CAN frame every 145 uS.
+	 * The number of buffers sets how long you can go without calling
+	 * node_spin_xxxx. Since our task is the only one running and the
+	 * driver will light the fd when there is a CAN frame we can nun with
+	 * a minimum number of buffers to conserver memory. Each buffer is
+	 * 32 bytes. So 5 buffers costs 160 bytes and gives us a poll rate
+	 * of ~1 mS
+	 *  1000000/200
+	 */
+
+	static constexpr unsigned RxQueueLenPerIface = FramePerMSecond * PollTimeoutMs; // At
+	static constexpr unsigned StackSize          = 1800;
 
 public:
-	typedef uavcan::Node<MemPoolSize> Node;
 	typedef uavcan_stm32::CanInitHelper<RxQueueLenPerIface> CanInitHelper;
+	enum eServerAction {None, Start, Stop, CheckFW , Busy};
 
 	UavcanNode(uavcan::ICanDriver &can_driver, uavcan::ISystemClock &system_clock);
 
@@ -82,7 +109,7 @@ public:
 
 	static int	start(uavcan::NodeID node_id, uint32_t bitrate);
 
-	Node		&get_node() { return _node; }
+	uavcan::Node<>	&get_node() { return _node; }
 
 	// TODO: move the actuator mixing stuff into the ESC controller class
 	static int	control_callback(uintptr_t handle, uint8_t control_group, uint8_t control_index, float &input);
@@ -94,7 +121,17 @@ public:
 
 	void		print_info();
 
+	void		shrink();
+
 	static UavcanNode *instance() { return _instance; }
+	static int         getHardwareVersion(uavcan::protocol::HardwareVersion &hwver);
+	int             fw_server(eServerAction action);
+	void            attachITxQueueInjector(ITxQueueInjector *injector) {_tx_injector = injector;}
+	int             list_params(int remote_node_id);
+	int             save_params(int remote_node_id);
+	int             set_param(int remote_node_id, const char *name, char *value);
+	int             get_param(int remote_node_id, const char *name);
+	int             reset_node(int remote_node_id);
 
 private:
 	void		fill_node_info();
@@ -102,10 +139,24 @@ private:
 	void		node_spin_once();
 	int		run();
 	int		add_poll_fd(int fd);			///< add a fd to poll list, returning index into _poll_fds[]
-
+	int             start_fw_server();
+	int             stop_fw_server();
+	int             request_fw_check();
+	int             print_params(uavcan::protocol::param::GetSet::Response &resp);
+	int             get_set_param(int nodeid, const char *name, uavcan::protocol::param::GetSet::Request &req);
+	void            set_setget_response(uavcan::protocol::param::GetSet::Response *resp)
+	{
+		_setget_response = resp;
+	}
+	void            free_setget_response(void)
+	{
+		_setget_response = nullptr;
+	}
 
 	int			_task = -1;			///< handle to the OS task
 	bool			_task_should_exit = false;	///< flag to indicate to tear down the CAN driver
+	volatile eServerAction            _fw_server_action;
+	int                      _fw_server_status;
 	int			_armed_sub = -1;		///< uORB subscription of the arming status
 	actuator_armed_s	_armed = {};			///< the arming request of the system
 	bool			_is_armed = false;		///< the arming status of the actuators on the bus
@@ -117,15 +168,20 @@ private:
 	unsigned		_output_count = 0;		///< number of actuators currently available
 
 	static UavcanNode	*_instance;			///< singleton pointer
-	Node			_node;				///< library instance
-	pthread_mutex_t		_node_mutex;
 
+	uavcan_node::Allocator _pool_allocator;
+
+	uavcan::Node<>		_node;				///< library instance
+	pthread_mutex_t		_node_mutex;
+	px4_sem_t                   _server_command_sem;
 	UavcanEscController	_esc_controller;
+	uavcan::GlobalTimeSyncMaster _time_sync_master;
+	uavcan::GlobalTimeSyncSlave _time_sync_slave;
 
 	List<IUavcanSensorBridge *> _sensor_bridges;		///< List of active sensor bridges
 
 	MixerGroup		*_mixers = nullptr;
-
+	ITxQueueInjector        *_tx_injector;
 	uint32_t		_groups_required = 0;
 	uint32_t		_groups_subscribed = 0;
 	int			_control_subs[NUM_ACTUATOR_CONTROL_GROUPS_UAVCAN] = {};
@@ -146,4 +202,22 @@ private:
 	perf_counter_t _perfcnt_node_spin_elapsed        = perf_alloc(PC_ELAPSED, "uavcan_node_spin_elapsed");
 	perf_counter_t _perfcnt_esc_mixer_output_elapsed = perf_alloc(PC_ELAPSED, "uavcan_esc_mixer_output_elapsed");
 	perf_counter_t _perfcnt_esc_mixer_total_elapsed  = perf_alloc(PC_ELAPSED, "uavcan_esc_mixer_total_elapsed");
+
+	void handle_time_sync(const uavcan::TimerEvent &);
+
+	typedef uavcan::MethodBinder<UavcanNode *, void (UavcanNode::*)(const uavcan::TimerEvent &)> TimerCallback;
+	uavcan::TimerEventForwarder<TimerCallback> _master_timer;
+
+	bool _callback_success;
+	uavcan::protocol::param::GetSet::Response *_setget_response;
+	typedef uavcan::MethodBinder<UavcanNode *,
+		void (UavcanNode::*)(const uavcan::ServiceCallResult<uavcan::protocol::param::GetSet> &)> GetSetCallback;
+	typedef uavcan::MethodBinder<UavcanNode *,
+		void (UavcanNode::*)(const uavcan::ServiceCallResult<uavcan::protocol::param::ExecuteOpcode> &)> ExecuteOpcodeCallback;
+	typedef uavcan::MethodBinder<UavcanNode *,
+		void (UavcanNode::*)(const uavcan::ServiceCallResult<uavcan::protocol::RestartNode> &)> RestartNodeCallback;
+	void cb_setget(const uavcan::ServiceCallResult<uavcan::protocol::param::GetSet> &result);
+	void cb_opcode(const uavcan::ServiceCallResult<uavcan::protocol::param::ExecuteOpcode> &result);
+	void cb_restart(const uavcan::ServiceCallResult<uavcan::protocol::RestartNode> &result);
+
 };
