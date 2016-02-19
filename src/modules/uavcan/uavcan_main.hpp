@@ -70,6 +70,12 @@
 
 // we add two to allow for actuator_direct and busevent
 #define UAVCAN_NUM_POLL_FDS (NUM_ACTUATOR_CONTROL_GROUPS_UAVCAN+2)
+
+
+#define _UAVCAN_IOCBASE 			(0x4000)						// IOCTL base for module UAVCAN
+#define _UAVCAN_IOC(_n) 			(_IOC(_UAVCAN_IOCBASE, _n))
+
+#define UAVCAN_IOCG_NODEID_INPROGRESS  _UAVCAN_IOC(1)				// query if node identification is in progress
 /**
  * A UAVCAN node.
  */
