@@ -32,48 +32,58 @@
  ****************************************************************************/
 
 /**
- * @author Pavel Kirienko <pavel.kirienko@gmail.com>
+ * @file hardpoint.hpp
+ *
+ * @author Andreas Jochum <Andreas@NicaDrone.com>
  */
 
-#include <px4_config.h>
-#include <systemlib/param/param.h>
+#pragma once
 
-/**
- * Enable UAVCAN.
- *
- * Allowed values:
- *  0 - UAVCAN disabled.
- *  1 - Enabled support for UAVCAN actuators and sensors.
- *  2 - Enabled support for dynamic node ID allocation and firmware update.
- *  3 - Sets the motor control outputs to UAVCAN and enables support for dynamic node ID allocation and firmware update.
- *
- * @min 0
- * @max 3
- * @value 0 Disabled
- * @value 1 Enabled
- * @value 2 Dynamic ID/Update
- * @value 3 Motors/Update
- * @group UAVCAN
- */
-PARAM_DEFINE_INT32(UAVCAN_ENABLE, 0);
+#include <uavcan/uavcan.hpp>
+#include <uavcan/equipment/hardpoint/Command.hpp>
+#include <uavcan/equipment/hardpoint/Status.hpp>
+#include <systemlib/perf_counter.h>
 
 /**
- * UAVCAN Node ID.
- *
- * Read the specs at http://uavcan.org to learn more about Node ID.
- *
- * @min 1
- * @max 125
- * @group UAVCAN
+ * @brief The UavcanHardpointController class
  */
-PARAM_DEFINE_INT32(UAVCAN_NODE_ID, 1);
 
-/**
- * UAVCAN CAN bus bitrate.
- *
- * @unit bit/s
- * @min 20000
- * @max 1000000
- * @group UAVCAN
- */
-PARAM_DEFINE_INT32(UAVCAN_BITRATE, 1000000);
+class UavcanHardpointController
+{
+public:
+	UavcanHardpointController(uavcan::INode &node);
+	~UavcanHardpointController();
+
+	/*
+	* setup periodic updater
+	*/
+	int init();
+
+
+	/*
+	 * set command
+	 */
+	void set_command(uint8_t hardpoint_id, uint16_t command);
+
+private:
+	/*
+	 * Max update rate to avoid exessive bus traffic
+	 */
+	static constexpr unsigned			MAX_RATE_HZ = 1;	///< XXX make this configurable
+
+	uavcan::equipment::hardpoint::Command		_cmd;
+
+	void periodic_update(const uavcan::TimerEvent &);
+
+	typedef uavcan::MethodBinder<UavcanHardpointController *, void (UavcanHardpointController::*)(const uavcan::TimerEvent &)>
+	TimerCbBinder;
+
+	pthread_mutex_t					_node_mutex;
+	/*
+	 * libuavcan related things
+	 */
+	uavcan::INode							&_node;
+	uavcan::Publisher<uavcan::equipment::hardpoint::Command>	_uavcan_pub_raw_cmd;
+	uavcan::TimerEventForwarder<TimerCbBinder>			_timer;
+
+};

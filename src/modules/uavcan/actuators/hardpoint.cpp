@@ -32,48 +32,59 @@
  ****************************************************************************/
 
 /**
- * @author Pavel Kirienko <pavel.kirienko@gmail.com>
+ * @file hardpoint.cpp
+ *
+ * @author Andreas Jochum <Andreas@NicaDrone.com>
  */
 
-#include <px4_config.h>
-#include <systemlib/param/param.h>
+#include "hardpoint.hpp"
+#include <systemlib/err.h>
 
-/**
- * Enable UAVCAN.
- *
- * Allowed values:
- *  0 - UAVCAN disabled.
- *  1 - Enabled support for UAVCAN actuators and sensors.
- *  2 - Enabled support for dynamic node ID allocation and firmware update.
- *  3 - Sets the motor control outputs to UAVCAN and enables support for dynamic node ID allocation and firmware update.
- *
- * @min 0
- * @max 3
- * @value 0 Disabled
- * @value 1 Enabled
- * @value 2 Dynamic ID/Update
- * @value 3 Motors/Update
- * @group UAVCAN
- */
-PARAM_DEFINE_INT32(UAVCAN_ENABLE, 0);
+UavcanHardpointController::UavcanHardpointController(uavcan::INode &node) :
+	_node(node),
+	_uavcan_pub_raw_cmd(node),
+	_timer(node)
+{
+	_uavcan_pub_raw_cmd.setPriority(uavcan::TransferPriority::MiddleLower);
+}
 
-/**
- * UAVCAN Node ID.
- *
- * Read the specs at http://uavcan.org to learn more about Node ID.
- *
- * @min 1
- * @max 125
- * @group UAVCAN
- */
-PARAM_DEFINE_INT32(UAVCAN_NODE_ID, 1);
 
-/**
- * UAVCAN CAN bus bitrate.
- *
- * @unit bit/s
- * @min 20000
- * @max 1000000
- * @group UAVCAN
- */
-PARAM_DEFINE_INT32(UAVCAN_BITRATE, 1000000);
+UavcanHardpointController::~UavcanHardpointController()
+{
+
+}
+
+int UavcanHardpointController::init()
+{
+	/*
+	 * Setup timer and call back function for periodic updates
+	 */
+	_timer.setCallback(TimerCbBinder(this, &UavcanHardpointController::periodic_update));
+	return 0;
+}
+
+void UavcanHardpointController::set_command(uint8_t hardpoint_id, uint16_t command)
+{
+	_cmd.command = command;
+	_cmd.hardpoint_id = hardpoint_id;
+
+	/*
+	 * Publish the command message to the bus
+	 */
+	(void)_uavcan_pub_raw_cmd.broadcast(_cmd);
+
+	/*
+	 * Start the periodic update timer after a command is set
+	 */
+	if (!_timer.isRunning()) {
+		_timer.startPeriodic(uavcan::MonotonicDuration::fromMSec(1000 / MAX_RATE_HZ));
+	}
+
+}
+void UavcanHardpointController::periodic_update(const uavcan::TimerEvent &)
+{
+	/*
+	 * Broadcast command at MAX_RATE_HZ
+	 */
+	(void)_uavcan_pub_raw_cmd.broadcast(_cmd);
+}

@@ -46,7 +46,8 @@ SRCS += uavcan_main.cpp              \
         uavcan_params.c
 
 # Actuators
-SRCS += actuators/esc.cpp
+SRCS += actuators/esc.cpp           \
+        actuators/hardpoint.cpp
 
 # Sensors
 SRCS += sensors/sensor_bridge.cpp   \
